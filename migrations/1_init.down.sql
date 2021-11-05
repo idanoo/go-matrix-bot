@@ -1,1 +1,1 @@
-DROP TABLE IF EXISTS `config`;
+DROP TABLE IF EXISTS `rooms`;

@@ -3,6 +3,7 @@ package gomatrixbot
 import (
 	"database/sql"
 	"fmt"
+	"log"
 
 	"github.com/golang-migrate/migrate"
 	"github.com/golang-migrate/migrate/database/sqlite3"
@@ -12,37 +13,43 @@ import (
 var (
 	DBFile string
 
-	db *sql.DB
+	db DB
 )
 
+type DB struct {
+	dbconn *sql.DB
+}
+
 func InitDb() {
-	dbConn, err := sql.Open("sqlite3", "file:"+DBFile+"?loc=auto")
+	conn, err := sql.Open("sqlite3", "file:"+DBFile+"?loc=auto")
 	if err != nil {
 		panic(err)
 	}
 
-	dbConn.SetConnMaxLifetime(0)
-	dbConn.SetMaxOpenConns(20)
-	dbConn.SetMaxIdleConns(2)
+	conn.SetConnMaxLifetime(0)
+	conn.SetMaxOpenConns(20)
+	conn.SetMaxIdleConns(2)
 
-	err = dbConn.Ping()
+	err = conn.Ping()
 	if err != nil {
 		panic(err)
 	}
 
-	db = dbConn
+	db = DB{
+		dbconn: conn,
+	}
 
 	runMigrations()
 }
 
 // CloseDbConn - Closes DB connection
 func CloseDbConn() {
-	db.Close()
+	db.dbconn.Close()
 }
 
 func runMigrations() {
 	fmt.Println("Checking database migrations")
-	driver, err := sqlite3.WithInstance(db, &sqlite3.Config{})
+	driver, err := sqlite3.WithInstance(db.dbconn, &sqlite3.Config{})
 	if err != nil {
 		panic(fmt.Sprintf("Unable to run DB Migrations %v", err))
 	}
@@ -68,4 +75,22 @@ func runMigrations() {
 	}
 
 	fmt.Println("Database migrations complete")
+}
+
+func (db *DB) getRooms() map[string]string {
+	results := make(map[string]string)
+	row, err := db.dbconn.Query("SELECT `id`, `name` FROM `rooms`")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer row.Close()
+	for row.Next() { // Iterate and fetch the records from result cursor
+		var id string
+		var name string
+		row.Scan(&id, &name)
+		results[id] = name
+	}
+
+	return results
 }

@@ -15,21 +15,36 @@ var (
 	MatrixToken    string
 
 	// Mautrix client
-	c *mautrix.Client
+	mtrx MtrxClient
 )
+
+type MtrxClient struct {
+	c     *mautrix.Client
+	rooms map[string]string
+}
 
 // Run - starts bot!
 func Run() {
-	c = initClient()
+	mtrx := MtrxClient{}
+	mtrx.c = initClient()
+	mtrx.rooms = db.getRooms()
+
+	// Join previously invited rooms.
+	for _, roomName := range mtrx.rooms {
+		_, err := mtrx.c.JoinRoom(roomName, "", nil)
+		if err != nil {
+			log.Print(err)
+		}
+	}
 
 	log.Printf("Started gomatrixbot")
 
-	roomResp, err := c.JoinRoom("#testroom:mtrx.nz", "", nil)
+	roomResp, err := mtrx.c.JoinRoom("#testroom:mtrx.nz", "", nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	_, err = c.SendNotice(roomResp.RoomID, "test!")
+	_, err = mtrx.c.SendNotice(roomResp.RoomID, "test!")
 	if err != nil {
 		log.Print(err)
 	}
