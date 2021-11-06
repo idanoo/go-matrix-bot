@@ -24,8 +24,9 @@ type MtrxClient struct {
 	startTime int64
 	db        *sql.DB
 
-	ducks  duckHunt
-	quotes map[id.RoomID]quoteCache
+	ducks       duckHunt
+	quotes      map[id.RoomID]quoteCache
+	roomAliases map[id.RoomID]string
 }
 
 // Run - starts bot!
@@ -47,8 +48,10 @@ func Run() {
 		go mtrx.handleEvent(source, evt)
 	})
 
+	// Init all the things
 	go mtrx.initDuckHunt()
 	go mtrx.initQuote()
+	mtrx.roomAliases = make(map[id.RoomID]string)
 
 	// Launch'er up
 	err := mtrx.c.Sync()
@@ -109,6 +112,7 @@ func (mtrx *MtrxClient) parseCommand(source mautrix.EventSource, evt *event.Even
 	case "help":
 		msg := "gomatrixbot commands:\n\n" +
 			"!echo - echo message back to channel\n" +
+			"!quote <user>, !quote - quote users last message or returns a random quote\n" +
 			"!starthunt, !stophunt, !bang - duckhunt commands"
 		_, err := mtrx.c.SendNotice(evt.RoomID, msg)
 		if err != nil {

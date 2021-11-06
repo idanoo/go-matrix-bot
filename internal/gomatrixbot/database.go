@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/golang-migrate/migrate"
 	"github.com/golang-migrate/migrate/database/sqlite3"
@@ -90,15 +91,16 @@ func (mtrx *MtrxClient) getDuckHunt() map[string]int64 {
 	return results
 }
 
+// QUOTE
 func (mtrx *MtrxClient) getRandomQuote(roomID id.RoomID) (string, string) {
-	quote := fmt.Sprintf("No quotes for %s", roomID)
 	userID := "N/A"
-
-	row, err := mtrx.db.Query("SELECT `quote`, `user_id` FROM `quotes` WHERE `room_id` = 1 ORDER BY RANDOM() LIMIT 1")
-	if err != sql.ErrNoRows {
+	quote := "No quotes for this room"
+	row, err := mtrx.db.Query("SELECT `quote`, `user_id` FROM `quotes` WHERE `room_id` = ? ORDER BY RANDOM() LIMIT 1", roomID)
+	if err == sql.ErrNoRows {
 		return userID, quote
 	} else if err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return userID, quote
 	}
 
 	defer row.Close()
@@ -107,4 +109,14 @@ func (mtrx *MtrxClient) getRandomQuote(roomID id.RoomID) (string, string) {
 	}
 
 	return userID, quote
+}
+
+// QUOTE
+func (mtrx *MtrxClient) storeQuote(roomID id.RoomID, userID id.UserID, quote string) {
+	_, err := mtrx.db.Exec(
+		"INSERT INTO `quotes` (`user_id`, `room_id`, `timestamp`, `quote`) VALUES (?,?,?,?)",
+		userID.String(), roomID.String(), time.Now().Unix(), quote)
+	if err != nil {
+		log.Print(err)
+	}
 }

@@ -34,6 +34,9 @@ func (mtrx *MtrxClient) quote(roomID id.RoomID, userID id.UserID) {
 	if roomVal, roomOk := mtrx.quotes[roomID]; roomOk {
 		if userVal, userOk := roomVal.lastMessage[userID]; userOk {
 			// Store to quote DB
+			mtrx.storeQuote(roomID, userID, userVal)
+
+			// Send quote
 			_, err := mtrx.c.SendNotice(roomID, fmt.Sprintf("Quoted %s: %s", userID, userVal))
 			if err != nil {
 				log.Print(err)
