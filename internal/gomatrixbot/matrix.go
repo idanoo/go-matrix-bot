@@ -48,6 +48,10 @@ func Run() {
 		go mtrx.handleEvent(source, evt)
 	})
 
+	syncer.OnEventType(event.StateMember, func(source mautrix.EventSource, evt *event.Event) {
+		go mtrx.handleInvite(source, evt)
+	})
+
 	// Init all the things
 	go mtrx.initDuckHunt()
 	go mtrx.initQuote()
@@ -102,6 +106,23 @@ func (mtrx *MtrxClient) handleEvent(source mautrix.EventSource, evt *event.Event
 	mtrx.appendLastMessage(evt.RoomID, evt.Sender, evt.Content.AsMessage().Body)
 }
 
+func (mtrx *MtrxClient) handleInvite(source mautrix.EventSource, evt *event.Event) {
+	// If syncing older data.. stop that
+	if evt.Timestamp < mtrx.startTime {
+		return
+	}
+
+	content := struct {
+		Inviter id.UserID `json:"inviter"`
+	}{evt.Sender}
+
+	if _, err := mtrx.c.JoinRoom(evt.RoomID.String(), "", content); err != nil {
+		fmt.Printf("Failed to join room: %s", evt.RoomID.String())
+	} else {
+		fmt.Printf("Joined room: %s", evt.RoomID.String())
+	}
+}
+
 func (mtrx *MtrxClient) parseCommand(source mautrix.EventSource, evt *event.Event) {
 	cmd := strings.Split(evt.Content.AsMessage().Body[1:], " ")
 	if len(cmd) == 0 {
@@ -110,7 +131,7 @@ func (mtrx *MtrxClient) parseCommand(source mautrix.EventSource, evt *event.Even
 
 	switch cmd[0] {
 	case "help":
-		msg := "gomatrixbot commands:\n\n" +
+		msg := "@dbot:mtrx.nz commands:\n\n" +
 			"!echo - echo message back to channel\n" +
 			"!quote <user>, !quote - quote users last message or returns a random quote\n" +
 			"!starthunt, !stophunt, !bang - duckhunt commands"
@@ -119,7 +140,8 @@ func (mtrx *MtrxClient) parseCommand(source mautrix.EventSource, evt *event.Even
 			log.Print(err)
 		}
 	case "echo":
-		_, err := mtrx.c.SendNotice(evt.RoomID, strings.Join(cmd[1:], " "))
+		_, err := mtrx.c.SendNotice(
+			evt.RoomID, strings.Join(cmd[1:], " "))
 		if err != nil {
 			log.Print(err)
 		}
