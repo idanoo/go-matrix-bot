@@ -3,10 +3,12 @@ package gomatrixbot
 import (
 	"database/sql"
 	"fmt"
+	"log"
 
 	"github.com/golang-migrate/migrate"
 	"github.com/golang-migrate/migrate/database/sqlite3"
 	_ "github.com/golang-migrate/migrate/source/file"
+	"maunium.net/go/mautrix/id"
 )
 
 var (
@@ -68,20 +70,41 @@ func runMigrations(db *sql.DB) {
 	fmt.Println("Database migrations complete")
 }
 
-// func (db *DB) getRooms() map[string]string {
-// 	results := make(map[string]string)
-// 	row, err := db.dbconn.Query("SELECT `id`, `name` FROM `rooms`")
-// 	if err != nil {
-// 		log.Fatal(err)
-// 	}
+func (mtrx *MtrxClient) getDuckHunt() map[string]int64 {
+	results := make(map[string]int64)
+	row, err := mtrx.db.Query("SELECT `room_id`, `enabled` FROM `duck_hunt`")
+	if err != sql.ErrNoRows {
+		return results
+	} else if err != nil {
+		log.Fatal(err)
+	}
 
-// 	defer row.Close()
-// 	for row.Next() { // Iterate and fetch the records from result cursor
-// 		var id string
-// 		var name string
-// 		row.Scan(&id, &name)
-// 		results[id] = name
-// 	}
+	defer row.Close()
+	for row.Next() {
+		var room_id string
+		var enabled int64
+		row.Scan(&room_id, &enabled)
+		results[room_id] = enabled
+	}
 
-// 	return results
-// }
+	return results
+}
+
+func (mtrx *MtrxClient) getRandomQuote(roomID id.RoomID) (string, string) {
+	quote := fmt.Sprintf("No quotes for %s", roomID)
+	userID := "N/A"
+
+	row, err := mtrx.db.Query("SELECT `quote`, `user_id` FROM `quotes` WHERE `room_id` = 1 ORDER BY RANDOM() LIMIT 1")
+	if err != sql.ErrNoRows {
+		return userID, quote
+	} else if err != nil {
+		log.Fatal(err)
+	}
+
+	defer row.Close()
+	for row.Next() {
+		row.Scan(&quote, &userID)
+	}
+
+	return userID, quote
+}

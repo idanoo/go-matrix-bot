@@ -9,6 +9,7 @@ import (
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 )
 
 var (
@@ -22,6 +23,9 @@ type MtrxClient struct {
 	c         *mautrix.Client
 	startTime int64
 	db        *sql.DB
+
+	ducks  duckHunt
+	quotes map[id.RoomID]quoteCache
 }
 
 // Run - starts bot!
@@ -40,8 +44,11 @@ func Run() {
 
 	syncer := mtrx.c.Syncer.(*mautrix.DefaultSyncer)
 	syncer.OnEventType(event.EventMessage, func(source mautrix.EventSource, evt *event.Event) {
-		mtrx.handleEvent(source, evt)
+		go mtrx.handleEvent(source, evt)
 	})
+
+	go mtrx.initDuckHunt()
+	go mtrx.initQuote()
 
 	// Launch'er up
 	err := mtrx.c.Sync()
@@ -85,9 +92,11 @@ func (mtrx *MtrxClient) handleEvent(source mautrix.EventSource, evt *event.Event
 	// Parse command if intended for us
 	if evt.Content.AsMessage().Body[0:1] == "!" {
 		fmt.Printf("<%[1]s> %[4]s (%[2]s/%[3]s)\n", evt.Sender, evt.Type.String(), evt.ID, evt.Content.AsMessage().Body)
-		go mtrx.parseCommand(source, evt)
+		mtrx.parseCommand(source, evt)
 		return
 	}
+
+	mtrx.appendLastMessage(evt.RoomID, evt.Sender, evt.Content.AsMessage().Body)
 }
 
 func (mtrx *MtrxClient) parseCommand(source mautrix.EventSource, evt *event.Event) {
@@ -109,6 +118,23 @@ func (mtrx *MtrxClient) parseCommand(source mautrix.EventSource, evt *event.Even
 		_, err := mtrx.c.SendNotice(evt.RoomID, strings.Join(cmd[1:], " "))
 		if err != nil {
 			log.Print(err)
+		}
+	case "quote":
+		if len(cmd) == 1 {
+			user, quote := mtrx.getRandomQuote(evt.RoomID)
+			_, err := mtrx.c.SendNotice(evt.RoomID, fmt.Sprintf("Quote from %s: %s", user, quote))
+			if err != nil {
+				log.Print(err)
+			}
+			return
+		} else if len(cmd) == 2 {
+			mtrx.quote(evt.RoomID, id.UserID(cmd[1]))
+		} else {
+			_, err := mtrx.c.SendNotice(evt.RoomID, "Usage - !quote <user>")
+			if err != nil {
+				log.Print(err)
+			}
+			return
 		}
 	case "starthunt":
 		fallthrough
