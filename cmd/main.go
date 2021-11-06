@@ -24,11 +24,7 @@ func main() {
 	// Set Matrix Credentials
 	gomatrixbot.MatrixHost = os.Getenv("MATRIX_HOST")
 	gomatrixbot.MatrixUsername = os.Getenv("MATRIX_USERNAME")
-	gomatrixbot.MatrixToken = os.Getenv("MATRIX_TOKEN")
-
-	// Get DB connection and run any pending migrations
-	gomatrixbot.InitDb()
-	defer gomatrixbot.CloseDbConn()
+	gomatrixbot.MatrixPassword = os.Getenv("MATRIX_PASSWORD")
 
 	// Start application
 	gomatrixbot.Run()

@@ -3,7 +3,6 @@ package gomatrixbot
 import (
 	"database/sql"
 	"fmt"
-	"log"
 
 	"github.com/golang-migrate/migrate"
 	"github.com/golang-migrate/migrate/database/sqlite3"
@@ -12,44 +11,36 @@ import (
 
 var (
 	DBFile string
-
-	db DB
 )
 
-type DB struct {
-	dbconn *sql.DB
-}
-
-func InitDb() {
-	conn, err := sql.Open("sqlite3", "file:"+DBFile+"?loc=auto")
+func InitDb() *sql.DB {
+	db, err := sql.Open("sqlite3", "file:"+DBFile+"?loc=auto")
 	if err != nil {
 		panic(err)
 	}
 
-	conn.SetConnMaxLifetime(0)
-	conn.SetMaxOpenConns(20)
-	conn.SetMaxIdleConns(2)
+	db.SetConnMaxLifetime(0)
+	db.SetMaxOpenConns(20)
+	db.SetMaxIdleConns(2)
 
-	err = conn.Ping()
+	err = db.Ping()
 	if err != nil {
 		panic(err)
 	}
 
-	db = DB{
-		dbconn: conn,
-	}
+	runMigrations(db)
 
-	runMigrations()
+	return db
 }
 
 // CloseDbConn - Closes DB connection
-func CloseDbConn() {
-	db.dbconn.Close()
+func (mtrx *MtrxClient) CloseDbConn() {
+	mtrx.db.Close()
 }
 
-func runMigrations() {
+func runMigrations(db *sql.DB) {
 	fmt.Println("Checking database migrations")
-	driver, err := sqlite3.WithInstance(db.dbconn, &sqlite3.Config{})
+	driver, err := sqlite3.WithInstance(db, &sqlite3.Config{})
 	if err != nil {
 		panic(fmt.Sprintf("Unable to run DB Migrations %v", err))
 	}
@@ -77,20 +68,20 @@ func runMigrations() {
 	fmt.Println("Database migrations complete")
 }
 
-func (db *DB) getRooms() map[string]string {
-	results := make(map[string]string)
-	row, err := db.dbconn.Query("SELECT `id`, `name` FROM `rooms`")
-	if err != nil {
-		log.Fatal(err)
-	}
+// func (db *DB) getRooms() map[string]string {
+// 	results := make(map[string]string)
+// 	row, err := db.dbconn.Query("SELECT `id`, `name` FROM `rooms`")
+// 	if err != nil {
+// 		log.Fatal(err)
+// 	}
 
-	defer row.Close()
-	for row.Next() { // Iterate and fetch the records from result cursor
-		var id string
-		var name string
-		row.Scan(&id, &name)
-		results[id] = name
-	}
+// 	defer row.Close()
+// 	for row.Next() { // Iterate and fetch the records from result cursor
+// 		var id string
+// 		var name string
+// 		row.Scan(&id, &name)
+// 		results[id] = name
+// 	}
 
-	return results
-}
+// 	return results
+// }
