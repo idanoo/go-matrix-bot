@@ -154,9 +154,9 @@ func (mtrx *MtrxClient) parseCommand(source mautrix.EventSource, evt *event.Even
 			}
 			return
 		} else if len(cmd) == 2 {
-			mtrx.quote(evt.RoomID, id.UserID(cmd[1]))
+			mtrx.quote(evt.RoomID, cmd[1])
 		} else {
-			_, err := mtrx.c.SendNotice(evt.RoomID, "Usage - !quote <user>")
+			_, err := mtrx.c.SendNotice(evt.RoomID, "Usage:\n!quote <user> - Quotes a users recent message\n!quote - Returns a random quote from this room")
 			if err != nil {
 				log.Print(err)
 			}
