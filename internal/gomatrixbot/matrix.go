@@ -124,7 +124,7 @@ func (mtrx *MtrxClient) handleInvite(source mautrix.EventSource, evt *event.Even
 }
 
 func (mtrx *MtrxClient) parseCommand(source mautrix.EventSource, evt *event.Event) {
-	cmd := strings.Split(evt.Content.AsMessage().Body[1:], " ")
+	cmd := strings.Split(strings.TrimSpace(evt.Content.AsMessage().Body[1:]), " ")
 	if len(cmd) == 0 {
 		return
 	}

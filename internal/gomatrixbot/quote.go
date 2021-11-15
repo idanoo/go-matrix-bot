@@ -32,7 +32,8 @@ func (mtrx *MtrxClient) appendLastMessage(roomID id.RoomID, userID id.UserID, me
 }
 
 // Grab last message from user and store it in DB
-func (mtrx *MtrxClient) quote(roomID id.RoomID, userID string) {
+func (mtrx *MtrxClient) quote(roomID id.RoomID, userID string) error {
+	log.Print(userID)
 	if roomVal, roomOk := mtrx.quotes[roomID]; roomOk {
 		if userVal, userOk := roomVal.lastMessage[userID]; userOk {
 			// Store to quote DB
@@ -43,7 +44,7 @@ func (mtrx *MtrxClient) quote(roomID id.RoomID, userID string) {
 			if err != nil {
 				log.Print(err)
 			}
-			return
+			return nil
 		}
 	}
 
@@ -51,6 +52,8 @@ func (mtrx *MtrxClient) quote(roomID id.RoomID, userID string) {
 	if err != nil {
 		log.Print(err)
 	}
+
+	return nil
 }
 
 func getLocalUserPart(str string) string {
