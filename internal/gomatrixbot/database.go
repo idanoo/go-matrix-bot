@@ -112,10 +112,10 @@ func (mtrx *MtrxClient) getRandomQuote(roomID id.RoomID) (string, string) {
 }
 
 // QUOTE
-func (mtrx *MtrxClient) storeQuote(roomID id.RoomID, userID string, quote string) {
+func (mtrx *MtrxClient) storeQuote(roomID id.RoomID, userID id.UserID, quote string) {
 	_, err := mtrx.db.Exec(
 		"INSERT INTO `quotes` (`user_id`, `room_id`, `timestamp`, `quote`) VALUES (?,?,?,?)",
-		userID, roomID.String(), time.Now().Unix(), quote)
+		userID.String(), roomID.String(), time.Now().Unix(), quote)
 	if err != nil {
 		log.Print(err)
 	}

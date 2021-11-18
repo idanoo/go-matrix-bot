@@ -104,11 +104,7 @@ func (mtrx *MtrxClient) pollFeeds() {
 		fp := gofeed.NewParser()
 		rss, err := fp.ParseURL(feed.URL)
 		if err != nil {
-			log.Println(err)
-			_, err = mtrx.c.SendNotice(id.RoomID(feed.RoomID), "Failed to parse RSS feed. Removing "+feed.URL)
-			if err != nil {
-				log.Print(err)
-			}
+			mtrx.sendMessage(id.RoomID(feed.RoomID), "Failed to parse RSS feed. Removing "+feed.URL)
 			_ = mtrx.removeRSSFeed(feed.URL, id.RoomID(feed.RoomID))
 			continue
 		}
@@ -130,10 +126,7 @@ func (mtrx *MtrxClient) pollFeeds() {
 				continue
 			}
 
-			_, err = mtrx.c.SendNotice(id.RoomID(feed.RoomID), fmt.Sprintf("%s - %s\n%s", rss.Title, item.Title, item.Link))
-			if err != nil {
-				log.Print(err)
-			}
+			mtrx.sendMessage(id.RoomID(feed.RoomID), fmt.Sprintf("%s - %s\n%s", rss.Title, item.Title, item.Link))
 		}
 
 		go mtrx.updateDBRSSFeed(feed.RoomID, feed.URL)

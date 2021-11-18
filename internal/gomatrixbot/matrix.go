@@ -4,10 +4,12 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 	"time"
 
 	"maunium.net/go/mautrix"
+	"maunium.net/go/mautrix/crypto"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -20,13 +22,15 @@ var (
 )
 
 type MtrxClient struct {
-	c         *mautrix.Client
-	startTime int64
-	db        *sql.DB
+	c           *mautrix.Client
+	startTime   int64
+	db          *sql.DB
+	olm         *crypto.OlmMachine
+	cryptoStore *crypto.SQLCryptoStore
 
-	ducks       duckHunt
-	quotes      map[id.RoomID]quoteCache
-	roomAliases map[id.RoomID]string
+	ducks         duckHunt
+	quotes        map[id.RoomID]quoteCache
+	roomEncrypted map[id.RoomID]bool
 }
 
 // Run - starts bot!
@@ -38,25 +42,51 @@ func Run() {
 	defer mtrx.CloseDbConn()
 
 	// Connet to matrix!
-	mtrx.c = initClient()
+	mtrx.initClient()
 	mtrx.startTime = time.Now().UnixMilli()
 
-	log.Printf("Started gomatrixbot")
+	mtrx.roomEncrypted = make(map[id.RoomID]bool)
 
 	syncer := mtrx.c.Syncer.(*mautrix.DefaultSyncer)
-	syncer.OnEventType(event.EventMessage, func(source mautrix.EventSource, evt *event.Event) {
-		go mtrx.handleEvent(source, evt)
+	syncer.OnSync(func(resp *mautrix.RespSync, since string) bool {
+		mtrx.olm.ProcessSyncResponse(resp, since)
+		return true
+	})
+
+	syncer.OnEventType(event.StateMember, func(source mautrix.EventSource, evt *event.Event) {
+		mtrx.olm.HandleMemberEvent(evt)
 	})
 
 	syncer.OnEventType(event.StateMember, func(source mautrix.EventSource, evt *event.Event) {
 		go mtrx.handleInvite(source, evt)
 	})
 
+	syncer.OnEventType(event.EventMessage, func(source mautrix.EventSource, evt *event.Event) {
+		mtrx.roomEncrypted[evt.RoomID] = false
+		go mtrx.handleEvent(source, evt)
+	})
+
+	syncer.OnEventType(event.EventEncrypted, func(source mautrix.EventSource, evt *event.Event) {
+		mtrx.roomEncrypted[evt.RoomID] = true
+		if evt.Timestamp < mtrx.startTime {
+			return
+		}
+
+		decrypted, err := mtrx.olm.DecryptMegolmEvent(evt)
+		if err != nil {
+			fmt.Println(err)
+		} else {
+			go mtrx.handleEvent(source, decrypted)
+		}
+
+	})
+
+	log.Printf("Started gomatrixbot")
+
 	// Init all the things
 	// go mtrx.initDuckHunt()
 	go mtrx.initQuote()
 	go mtrx.initRss()
-	mtrx.roomAliases = make(map[id.RoomID]string)
 
 	// Launch'er up
 	err := mtrx.c.Sync()
@@ -65,7 +95,7 @@ func Run() {
 	}
 }
 
-func initClient() *mautrix.Client {
+func (mtrx *MtrxClient) initClient() {
 	// Connect new client
 	client, err := mautrix.NewClient(MatrixHost, "", "")
 	if err != nil {
@@ -73,9 +103,10 @@ func initClient() *mautrix.Client {
 	}
 
 	// Login
-	_, err = client.Login(&mautrix.ReqLogin{
+	resp, err := client.Login(&mautrix.ReqLogin{
 		Type:             "m.login.password",
 		Identifier:       mautrix.UserIdentifier{Type: mautrix.IdentifierTypeUser, User: MatrixUsername},
+		DeviceID:         "dbot",
 		Password:         MatrixPassword,
 		StoreCredentials: true,
 	})
@@ -83,7 +114,30 @@ func initClient() *mautrix.Client {
 		log.Fatal(err)
 	}
 
-	return client
+	accountID := resp.UserID.String() + "-" + resp.DeviceID.String()
+	cryptoStore := crypto.NewSQLCryptoStore(mtrx.db, "sqlite3", accountID, resp.DeviceID, []byte(client.DeviceID.String()+"pickle"), &logger{})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if err = cryptoStore.CreateTables(); err != nil {
+		log.Println(err)
+	}
+
+	mtrx.cryptoStore = cryptoStore
+
+	mach := crypto.NewOlmMachine(client, &logger{}, mtrx.cryptoStore, &stateStore{})
+	mach.AcceptVerificationFrom = func(_ string, otherDevice *crypto.DeviceIdentity, _ id.RoomID) (crypto.VerificationRequestResponse, crypto.VerificationHooks) {
+		return crypto.AcceptRequest, mtrx
+	}
+
+	err = mach.Load()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	mtrx.c = client
+	mtrx.olm = mach
 }
 
 func (mtrx *MtrxClient) handleEvent(source mautrix.EventSource, evt *event.Event) {
@@ -143,47 +197,104 @@ func (mtrx *MtrxClient) parseCommand(source mautrix.EventSource, evt *event.Even
 			"\n!quote <user>, !quote - quote users last message or returns a random quote" +
 			"\n!starthunt, !stophunt, !bang - duckhunt commands" +
 			"\n!rss - RSS subscription commands"
-		_, err := mtrx.c.SendNotice(evt.RoomID, msg)
-		if err != nil {
-			log.Print(err)
-		}
+		mtrx.sendMessage(evt.RoomID, msg)
 	case "echo":
-		_, err := mtrx.c.SendNotice(
-			evt.RoomID, strings.Join(cmd[1:], " "))
-		if err != nil {
-			log.Print(err)
-		}
+		mtrx.sendMessage(evt.RoomID, strings.Join(cmd[1:], " "))
 	case "quote":
 		if len(cmd) == 1 {
 			user, quote := mtrx.getRandomQuote(evt.RoomID)
-			_, err := mtrx.c.SendNotice(evt.RoomID, fmt.Sprintf("Quote from %s: %s", user, quote))
-			if err != nil {
-				log.Print(err)
-			}
+			mtrx.sendMessage(evt.RoomID, fmt.Sprintf("Quote from %s: %s", user, quote))
 			return
 		} else if len(cmd) == 2 {
-			mtrx.quote(evt.RoomID, cmd[1])
-		} else {
-			_, err := mtrx.c.SendNotice(evt.RoomID, "Usage:\n!quote <user> - Quotes a users recent message\n!quote - Returns a random quote from this room")
-			if err != nil {
-				log.Print(err)
+			re := regexp.MustCompile(`@.*\.[^"]+`)
+			match := re.FindStringSubmatch(evt.Content.AsMessage().FormattedBody)
+			if len(match) == 1 {
+				mtrx.quote(evt.RoomID, id.UserID(match[0]))
+			} else {
+				mtrx.sendMessage(evt.RoomID, fmt.Sprintf("Cannot find a recent message from %s", cmd[1]))
 			}
+		} else {
+			mtrx.sendMessage(evt.RoomID, "Usage:\n!quote <user> - Quotes a users recent message\n!quote - Returns a random quote from this room")
 			return
 		}
 	case "rss":
 		output := mtrx.parseRSSCommand(cmd, evt.RoomID)
-		_, err := mtrx.c.SendNotice(evt.RoomID, output)
-		if err != nil {
-			log.Print(err)
-		}
+		mtrx.sendMessage(evt.RoomID, output)
 	case "starthunt":
 		fallthrough
 	case "stophunt":
 		fallthrough
 	case "bang":
-		_, err := mtrx.c.SendNotice(evt.RoomID, "Duckhunt coming soon...")
+		mtrx.sendMessage(evt.RoomID, "Duckhunt coming soon...")
+	case "ping":
+		mtrx.sendMessage(evt.RoomID, "pong")
+	}
+}
+
+func (mtrx *MtrxClient) sendMessage(roomID id.RoomID, text string) {
+	if _, ok := mtrx.roomEncrypted[roomID]; !ok {
+		_, err := mtrx.c.SendNotice(roomID, text)
 		if err != nil {
 			log.Print(err)
 		}
+		return
 	}
+
+	content := event.MessageEventContent{
+		MsgType: "m.notice",
+		Body:    text,
+	}
+	encrypted, err := mtrx.olm.EncryptMegolmEvent(roomID, event.EventMessage, content)
+	// These three errors mean we have to make a new Megolm session
+	if err == crypto.SessionExpired || err == crypto.SessionNotShared || err == crypto.NoGroupSession {
+		err = mtrx.olm.ShareGroupSession(roomID, mtrx.getUserIDs(roomID))
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		encrypted, err = mtrx.olm.EncryptMegolmEvent(roomID, event.EventMessage, content)
+	}
+	if err != nil {
+		log.Print(err)
+		return
+	}
+
+	_, err = mtrx.c.SendMessageEvent(roomID, event.EventEncrypted, encrypted)
+	if err != nil {
+		log.Print(err)
+		return
+	}
+}
+
+func (mtrx *MtrxClient) getUserIDs(roomID id.RoomID) []id.UserID {
+	members, err := mtrx.c.JoinedMembers(roomID)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	userIDs := make([]id.UserID, len(members.Joined))
+	i := 0
+	for userID := range members.Joined {
+		userIDs[i] = userID
+		i++
+	}
+	return userIDs
+}
+
+func (mtrx *MtrxClient) VerifySASMatch(otherDevice *crypto.DeviceIdentity, sas crypto.SASData) bool {
+	return true
+}
+
+func (mtrx *MtrxClient) VerificationMethods() []crypto.VerificationMethod {
+	return []crypto.VerificationMethod{
+		crypto.VerificationMethodDecimal{},
+	}
+}
+
+func (mtrx *MtrxClient) OnCancel(cancelledByUs bool, reason string, reasonCode event.VerificationCancelCode) {
+	return
+}
+
+func (mtrx *MtrxClient) OnSuccess() {
+	return
 }
