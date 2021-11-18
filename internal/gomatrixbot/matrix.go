@@ -53,8 +53,9 @@ func Run() {
 	})
 
 	// Init all the things
-	go mtrx.initDuckHunt()
+	// go mtrx.initDuckHunt()
 	go mtrx.initQuote()
+	go mtrx.initRss()
 	mtrx.roomAliases = make(map[id.RoomID]string)
 
 	// Launch'er up
@@ -112,9 +113,15 @@ func (mtrx *MtrxClient) handleInvite(source mautrix.EventSource, evt *event.Even
 		return
 	}
 
+	if evt.Sender == mtrx.c.UserID {
+		return
+	}
+
 	content := struct {
 		Inviter id.UserID `json:"inviter"`
 	}{evt.Sender}
+
+	fmt.Println("Invite by" + evt.Sender.String())
 
 	if _, err := mtrx.c.JoinRoom(evt.RoomID.String(), "", content); err != nil {
 		fmt.Printf("Failed to join room: %s", evt.RoomID.String())
@@ -131,10 +138,11 @@ func (mtrx *MtrxClient) parseCommand(source mautrix.EventSource, evt *event.Even
 
 	switch cmd[0] {
 	case "help":
-		msg := "@dbot:mtrx.nz commands:\n\n" +
-			"!echo - echo message back to channel\n" +
-			"!quote <user>, !quote - quote users last message or returns a random quote\n" +
-			"!starthunt, !stophunt, !bang - duckhunt commands"
+		msg := "@dbot:mtrx.nz commands:\n" +
+			"\n!echo - echo message back to channel" +
+			"\n!quote <user>, !quote - quote users last message or returns a random quote" +
+			"\n!starthunt, !stophunt, !bang - duckhunt commands" +
+			"\n!rss - RSS subscription commands"
 		_, err := mtrx.c.SendNotice(evt.RoomID, msg)
 		if err != nil {
 			log.Print(err)
@@ -161,6 +169,12 @@ func (mtrx *MtrxClient) parseCommand(source mautrix.EventSource, evt *event.Even
 				log.Print(err)
 			}
 			return
+		}
+	case "rss":
+		output := mtrx.parseRSSCommand(cmd, evt.RoomID)
+		_, err := mtrx.c.SendNotice(evt.RoomID, output)
+		if err != nil {
+			log.Print(err)
 		}
 	case "starthunt":
 		fallthrough

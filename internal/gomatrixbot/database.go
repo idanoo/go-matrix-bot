@@ -120,3 +120,81 @@ func (mtrx *MtrxClient) storeQuote(roomID id.RoomID, userID string, quote string
 		log.Print(err)
 	}
 }
+
+// Add feed to DB
+func (mtrx *MtrxClient) addDBRSSFeed(url string, roomID id.RoomID) error {
+	_, err := mtrx.db.Exec(
+		"INSERT INTO `rss_feeds` (`room_id`, `url`, `last_updated`) VALUES (?,?,?)",
+		roomID.String(), url, time.Now().Unix()-600)
+
+	return err
+}
+
+// CREATE TABLE `rss_feeds` (
+//     `room_id` VARCHAR(255) NOT NULL,
+//     `url` TEXT NOT NULL,
+//     `last_updated` INT(11) DEFAULT 0,
+//     PRIMARY KEY(`room_id`)
+// );
+
+// Remove feed from DB
+func (mtrx *MtrxClient) removeDBRSSFeed(url string, roomID id.RoomID) error {
+	_, err := mtrx.db.Exec(
+		"DELETE FROM `rss_feeds` WHERE `room_id` = ? AND `url` = ?",
+		roomID.String(), url)
+
+	return err
+}
+
+// Get feeds for room
+func (mtrx *MtrxClient) listDBRSSFeed(roomID id.RoomID) ([]string, error) {
+	feeds := []string{}
+
+	row, err := mtrx.db.Query("SELECT `url` FROM `rss_feeds` WHERE `room_id` = ?", roomID.String())
+	if err == sql.ErrNoRows {
+		return feeds, nil
+	} else if err != nil {
+		return feeds, err
+	}
+
+	defer row.Close()
+	for row.Next() {
+		var url string
+		row.Scan(&url)
+		feeds = append(feeds, url)
+	}
+
+	return feeds, nil
+}
+
+// Get all feeds
+func (mtrx *MtrxClient) listAllDBRSSFeeds() []RSSFeed {
+	feeds := []RSSFeed{}
+
+	row, err := mtrx.db.Query("SELECT `url`, `room_id`, `last_updated` FROM `rss_feeds`")
+	if err == sql.ErrNoRows {
+		return feeds
+	} else if err != nil {
+		log.Println(err)
+		return feeds
+	}
+
+	defer row.Close()
+	for row.Next() {
+		var rssFeed RSSFeed
+		row.Scan(&rssFeed.URL, &rssFeed.RoomID, &rssFeed.LastUpdated)
+		feeds = append(feeds, rssFeed)
+	}
+
+	return feeds
+}
+
+func (mtrx *MtrxClient) updateDBRSSFeed(roomID string, url string) {
+	_, err := mtrx.db.Exec(
+		"UPDATE `rss_feeds` SET `last_updated` = UNIX_TIMESTAMP() WHERE `room_id` = ? AND `url` = ?)",
+		roomID, url)
+
+	if err != nil {
+		fmt.Println(err)
+	}
+}
