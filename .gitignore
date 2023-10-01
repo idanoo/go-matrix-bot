@@ -1,2 +1,4 @@
 .env
 gomatrixbot.db
+/gomatrixbot
+/tmp

@@ -12,18 +12,14 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-var (
-	DBFile string
-)
-
 func InitDb() *sql.DB {
-	db, err := sql.Open("sqlite3", "file:"+DBFile+"?loc=auto")
+	db, err := sql.Open("sqlite3", "file:"+BotDb+"?loc=auto")
 	if err != nil {
 		panic(err)
 	}
 
 	db.SetConnMaxLifetime(0)
-	db.SetMaxOpenConns(20)
+	db.SetMaxOpenConns(5)
 	db.SetMaxIdleConns(2)
 
 	err = db.Ping()
@@ -130,13 +126,6 @@ func (mtrx *MtrxClient) addDBRSSFeed(url string, roomID id.RoomID) error {
 	return err
 }
 
-// CREATE TABLE `rss_feeds` (
-//     `room_id` VARCHAR(255) NOT NULL,
-//     `url` TEXT NOT NULL,
-//     `last_updated` INT(11) DEFAULT 0,
-//     PRIMARY KEY(`room_id`)
-// );
-
 // Remove feed from DB
 func (mtrx *MtrxClient) removeDBRSSFeed(url string, roomID id.RoomID) error {
 	_, err := mtrx.db.Exec(
@@ -168,33 +157,33 @@ func (mtrx *MtrxClient) listDBRSSFeed(roomID id.RoomID) ([]string, error) {
 }
 
 // Get all feeds
-func (mtrx *MtrxClient) listAllDBRSSFeeds() []RSSFeed {
-	feeds := []RSSFeed{}
+// func (mtrx *MtrxClient) listAllDBRSSFeeds() []RSSFeed {
+// 	feeds := []RSSFeed{}
 
-	row, err := mtrx.db.Query("SELECT `url`, `room_id`, `last_updated` FROM `rss_feeds`")
-	if err == sql.ErrNoRows {
-		return feeds
-	} else if err != nil {
-		log.Println(err)
-		return feeds
-	}
+// 	row, err := mtrx.db.Query("SELECT `url`, `room_id`, `last_updated` FROM `rss_feeds`")
+// 	if err == sql.ErrNoRows {
+// 		return feeds
+// 	} else if err != nil {
+// 		log.Println(err)
+// 		return feeds
+// 	}
 
-	defer row.Close()
-	for row.Next() {
-		var rssFeed RSSFeed
-		row.Scan(&rssFeed.URL, &rssFeed.RoomID, &rssFeed.LastUpdated)
-		feeds = append(feeds, rssFeed)
-	}
+// 	defer row.Close()
+// 	for row.Next() {
+// 		var rssFeed RSSFeed
+// 		row.Scan(&rssFeed.URL, &rssFeed.RoomID, &rssFeed.LastUpdated)
+// 		feeds = append(feeds, rssFeed)
+// 	}
 
-	return feeds
-}
+// 	return feeds
+// }
 
-func (mtrx *MtrxClient) updateDBRSSFeed(roomID string, url string) {
-	_, err := mtrx.db.Exec(
-		"UPDATE `rss_feeds` SET `last_updated` = UNIX_TIMESTAMP() WHERE `room_id` = ? AND `url` = ?)",
-		roomID, url)
+// func (mtrx *MtrxClient) updateDBRSSFeed(roomID string, url string) {
+// 	_, err := mtrx.db.Exec(
+// 		"UPDATE `rss_feeds` SET `last_updated` = UNIX_TIMESTAMP() WHERE `room_id` = ? AND `url` = ?)",
+// 		roomID, url)
 
-	if err != nil {
-		fmt.Println(err)
-	}
-}
+// 	if err != nil {
+// 		fmt.Println(err)
+// 	}
+// }

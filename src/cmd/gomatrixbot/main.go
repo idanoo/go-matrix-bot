@@ -2,29 +2,21 @@ package main
 
 import (
 	"gomatrixbot/internal/gomatrixbot"
-	"log"
 	"os"
-
-	"github.com/joho/godotenv"
 )
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
-
-	// Set DB file
-	gomatrixbot.DBFile = "gomatrixbot.db"
-	dbFile := os.Getenv("SQLITE3_DB")
-	if dbFile != "" {
-		gomatrixbot.DBFile = dbFile
-	}
-
 	// Set Matrix Credentials
 	gomatrixbot.MatrixHost = os.Getenv("MATRIX_HOST")
 	gomatrixbot.MatrixUsername = os.Getenv("MATRIX_USERNAME")
 	gomatrixbot.MatrixPassword = os.Getenv("MATRIX_PASSWORD")
+
+	// Debuggerrr. Shitty env work around :ok_hand:
+	debugFlag := os.Getenv("DEBUG")
+	gomatrixbot.Debug = false
+	if debugFlag == "1" || debugFlag == "true" {
+		gomatrixbot.Debug = true
+	}
 
 	// Start application
 	gomatrixbot.Run()
