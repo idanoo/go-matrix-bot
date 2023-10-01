@@ -18,6 +18,8 @@ func main() {
 		gomatrixbot.Debug = true
 	}
 
+	gomatrixbot.Admin = os.Getenv("ADMIN_USER")
+
 	// Start application
 	gomatrixbot.Run()
 }
